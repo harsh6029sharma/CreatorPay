@@ -22,7 +22,7 @@ CREATE TABLE "User" (
 CREATE TABLE "RefreshToken" (
     "id" TEXT NOT NULL,
     "token" TEXT NOT NULL,
-    "expiresAt" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
     "revoked" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT NOT NULL,
