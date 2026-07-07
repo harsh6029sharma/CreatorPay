@@ -1,11 +1,12 @@
 import { prisma } from "../lib/prisma"
 import bcrypt from 'bcrypt'
 import { ApiError } from "../utils/ApiError"
-import { generateRefreshToken, generateAccessToken } from "../utils/jwt"
+import { generateRefreshToken, generateAccessToken } from "../utils/jwt.utils"
 import { env } from "../config/env"
+import type { AuthResponse } from "../types/auth.types"
 
 
-export const createUser = async (email: string, password: string, name: string) => {
+export const createUser = async (email: string, password: string, name: string):Promise<AuthResponse> => {
     const existing = await prisma.user.findUnique({
         where: {
             email: email
@@ -39,5 +40,48 @@ export const createUser = async (email: string, password: string, name: string) 
             expiresAt
         }
     })
-    return {user,refreshToken,accessToken}
+    
+    return {
+        user,
+        accessToken,
+        refreshToken
+    }
+}
+
+export const loginUser = async (email:string, password:string):Promise<AuthResponse>=>{
+
+    const user = await prisma.user.findUnique({
+        where:{
+            email:email
+        }
+    })
+
+    if(!user){
+        throw new ApiError(401, "invalid email or password")
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash)
+
+    if(!isPasswordValid){
+        throw new ApiError(401, "invalid password or has expired")
+    }
+    
+    const refreshToken = generateRefreshToken(user.id)
+    const accessToken = generateAccessToken(user.id)
+
+    const expiresAt = new Date(env.refresh_expiry)
+
+    await prisma.refreshToken.create({
+        data:{
+            userId: user.id,
+            token:refreshToken,
+            expiresAt
+        }
+    })
+
+    return {
+        user,
+        accessToken,
+        refreshToken
+    }
 }

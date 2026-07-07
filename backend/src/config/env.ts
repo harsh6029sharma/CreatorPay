@@ -5,7 +5,7 @@ export const env = {
     access_secret: process.env.JWT_ACCESS_SECRET!,
     access_expiry: 15*60*1000, // 15m
     refresh_secret: process.env.JWT_REFRESH_SECRET!,
-    refresh_expiry: 7*24*60*60  // 7d
+    refresh_expiry: 7*24*60*60*1000 // 7d
 };
 
 if (
