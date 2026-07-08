@@ -4,9 +4,10 @@ import { ApiError } from "../utils/ApiError"
 import { generateRefreshToken, generateAccessToken } from "../utils/jwt.utils"
 import { env } from "../config/env"
 import type { AuthResponse } from "../types/auth.types"
+import type { SafeUser } from "../types/auth.types"
 
 
-export const createUser = async (email: string, password: string, name: string):Promise<AuthResponse> => {
+export const createUser = async (email: string, password: string, name: string): Promise<AuthResponse> => {
     const existing = await prisma.user.findUnique({
         where: {
             email: email
@@ -25,13 +26,19 @@ export const createUser = async (email: string, password: string, name: string):
             email: email,
             passwordHash: hashedPassword,
             name: name
+        },
+        select: {
+            id: true,
+            email: true,
+            name: true,
+            createdAt: true
         }
     })
 
     const refreshToken = generateRefreshToken(user.id)
     const accessToken = generateAccessToken(user.id)
 
-    const expiresAt = new Date(Date.now()+env.refresh_expiry)
+    const expiresAt = new Date(Date.now() + env.refresh_expiry)
 
     await prisma.refreshToken.create({
         data: {
@@ -40,7 +47,7 @@ export const createUser = async (email: string, password: string, name: string):
             expiresAt
         }
     })
-    
+
     return {
         user,
         accessToken,
@@ -48,39 +55,42 @@ export const createUser = async (email: string, password: string, name: string):
     }
 }
 
-export const loginUser = async (email:string, password:string):Promise<AuthResponse>=>{
+export const loginUser = async (email: string, password: string): Promise<AuthResponse> => {
 
     const user = await prisma.user.findUnique({
-        where:{
-            email:email
+        where: {
+            email: email
         }
     })
 
-    if(!user){
+
+    if (!user) {
         throw new ApiError(401, "invalid email or password")
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash)
+    const { passwordHash, ...SafeUser } = user
 
-    if(!isPasswordValid){
+    const isPasswordValid = await bcrypt.compare(password, passwordHash)
+
+    if (!isPasswordValid) {
         throw new ApiError(401, "invalid password or has expired")
     }
-    
+
     const refreshToken = generateRefreshToken(user.id)
     const accessToken = generateAccessToken(user.id)
 
     const expiresAt = new Date(env.refresh_expiry)
 
     await prisma.refreshToken.create({
-        data:{
+        data: {
             userId: user.id,
-            token:refreshToken,
+            token: refreshToken,
             expiresAt
         }
     })
 
     return {
-        user,
+        user: SafeUser,
         accessToken,
         refreshToken
     }
