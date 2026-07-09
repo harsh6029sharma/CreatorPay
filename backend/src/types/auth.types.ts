@@ -1,7 +1,7 @@
 import type { User } from "../../generated/prisma/client"
 
 export interface AuthResponse {
-    user:User
+    user:Omit<User, "passwordHash">
     accessToken:string
     refreshToken:string
 }

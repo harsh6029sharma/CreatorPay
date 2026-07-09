@@ -22,7 +22,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     }
     // set cookies
     return res.status(201).cookie('refreshToken', refreshToken, cookieOptions).json(
-        new ApiResponse(201, "user registered successfully")
+        new ApiResponse(201, createdUser, "user registered successfully")
     )
 })
 

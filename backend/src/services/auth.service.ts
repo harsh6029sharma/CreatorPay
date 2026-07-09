@@ -25,6 +25,9 @@ export const createUser = async (email: string, password: string, name: string):
             email: email,
             passwordHash: hashedPassword,
             name: name
+        },
+        omit:{
+            passwordHash:true
         }
     })
 
@@ -79,8 +82,10 @@ export const loginUser = async (email:string, password:string):Promise<AuthRespo
         }
     })
 
+    const {passwordHash, ...safeUser} = user
+
     return {
-        user,
+        user:safeUser as AuthResponse["user"],
         accessToken,
         refreshToken
     }
