@@ -4,16 +4,6 @@ import { ApiError } from "../utils/ApiError";
 import { verifyAccessToken } from "../utils/jwt.utils";
 import { prisma } from "../lib/prisma";
 
-declare global {
-    namespace Express {
-        interface Request{
-            user?:{
-                id:string
-            }
-        }
-    }
-}
-
 export const verifyJwt = asyncHandler(async(req:Request, res:Response, next:NextFunction)=>{
     const authHeader = req.headers.authorization
 

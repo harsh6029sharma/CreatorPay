@@ -4,14 +4,10 @@ import { ApiError } from "../utils/ApiError"
 import { generateRefreshToken, generateAccessToken } from "../utils/jwt.utils"
 import { env } from "../config/env"
 import type { AuthResponse } from "../types/auth.types"
-import type { SafeUser } from "../types/auth.types"
-
 
 export const createUser = async (email: string, password: string, name: string): Promise<AuthResponse> => {
     const existing = await prisma.user.findUnique({
-        where: {
-            email: email
-        }
+        where: { email: email }
     })
 
     if (existing) {
@@ -27,11 +23,8 @@ export const createUser = async (email: string, password: string, name: string):
             passwordHash: hashedPassword,
             name: name
         },
-        select: {
-            id: true,
-            email: true,
-            name: true,
-            createdAt: true
+        omit: {
+            passwordHash: true
         }
     })
 
@@ -58,19 +51,14 @@ export const createUser = async (email: string, password: string, name: string):
 export const loginUser = async (email: string, password: string): Promise<AuthResponse> => {
 
     const user = await prisma.user.findUnique({
-        where: {
-            email: email
-        }
+        where: { email: email }
     })
-
 
     if (!user) {
         throw new ApiError(401, "invalid email or password")
     }
 
-    const { passwordHash, ...SafeUser } = user
-
-    const isPasswordValid = await bcrypt.compare(password, passwordHash)
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash)
 
     if (!isPasswordValid) {
         throw new ApiError(401, "invalid password or has expired")
@@ -79,7 +67,7 @@ export const loginUser = async (email: string, password: string): Promise<AuthRe
     const refreshToken = generateRefreshToken(user.id)
     const accessToken = generateAccessToken(user.id)
 
-    const expiresAt = new Date(env.refresh_expiry)
+    const expiresAt = new Date(Date.now() + env.refresh_expiry)
 
     await prisma.refreshToken.create({
         data: {
@@ -89,8 +77,10 @@ export const loginUser = async (email: string, password: string): Promise<AuthRe
         }
     })
 
+    const { passwordHash, ...safeUser } = user
+
     return {
-        user: SafeUser,
+        user: safeUser,
         accessToken,
         refreshToken
     }
