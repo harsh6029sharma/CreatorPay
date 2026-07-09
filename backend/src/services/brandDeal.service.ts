@@ -7,6 +7,7 @@ import type {
   UpdateBrandDealInput,
   ListDealsQuery,
 } from "../validators/brandDeal.validator";
+import { scheduleReminderJob } from "../queues/payment.queue";
 
 // Handles top-level dealValue always, and payments[].amount when payments are included
 function serializeDeal<T extends { dealValue: Prisma.Decimal, payments?: { amount: Prisma.Decimal; [key: string]: any }[] }>(deal: T) {
@@ -107,7 +108,7 @@ export async function updateDealStatus(
   dealId: string,
   status: DealStatus
 ) {
-  await getDealById(userId, dealId); // existence + ownership check (throws 404)
+  await getDealById(userId, dealId);
 
   const updated = await prisma.$transaction(async (tx) => {
     const result = await tx.brandDeal.updateMany({
@@ -144,6 +145,22 @@ export async function updateDealStatus(
       include: { payment: true },
     });
   });
+
+  // Transaction commit ho chuka — ab job schedule karo (Redis op, DB tx ka part nahi)
+  const newlyCreatedPayment = updated.payment.find(
+    (p) => p.status === "PENDING"
+  );
+  if (status === "CONFIRMED" && newlyCreatedPayment) {
+    const jobId = await scheduleReminderJob(
+      newlyCreatedPayment.id,
+      newlyCreatedPayment.dueDate
+    );
+
+    await prisma.payment.update({
+      where: { id: newlyCreatedPayment.id },
+      data: { reminderJobId: jobId },
+    });
+  }
 
   return serializeDeal(updated);
 }
