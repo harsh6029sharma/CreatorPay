@@ -8,12 +8,17 @@ import type {
   ListDealsQuery,
 } from "../validators/brandDeal.validator";
 
-
-// ---- Shared serializer: Decimal -> number, keeps response shape consistent ----
-function serializeDeal<T extends { dealValue: Prisma.Decimal }>(deal: T) {
+// Handles top-level dealValue always, and payments[].amount when payments are included
+function serializeDeal<T extends { dealValue: Prisma.Decimal, payments?: { amount: Prisma.Decimal; [key: string]: any }[] }>(deal: T) {
   return {
     ...deal,
     dealValue: deal.dealValue.toNumber(),
+    ...(deal.payments && {
+      payments: deal.payments.map((p) => ({
+        ...p,
+        amount: p.amount.toNumber(),
+      })),
+    }),
   };
 }
 
@@ -29,7 +34,7 @@ export async function createDeal(userId: string, data: CreateBrandDealInput) {
   return serializeDeal(deal);
 }
 
-// get single deal (with payment, if it exists) 
+// get single deal (with payments, if any exist)
 export async function getDealById(userId: string, dealId: string) {
   const deal = await prisma.brandDeal.findFirst({
     where: { id: dealId, userId, deletedAt: null },
@@ -74,7 +79,7 @@ export async function listDeals(userId: string, filters: ListDealsQuery) {
   };
 }
 
-//  Update deal fields 
+// Update deal fields
 export async function updateDeal(
   userId: string,
   dealId: string,
@@ -92,36 +97,58 @@ export async function updateDeal(
     throw new ApiError(404, "Deal not found");
   }
 
-
   const updated = await prisma.brandDeal.findUnique({ where: { id: dealId } });
   return serializeDeal(updated!);
 }
 
-//  One-click status update 
+// One-click status update — auto-creates Payment when status becomes CONFIRMED
 export async function updateDealStatus(
   userId: string,
   dealId: string,
   status: DealStatus
 ) {
-  await getDealById(userId, dealId);
+  await getDealById(userId, dealId); // existence + ownership check (throws 404)
 
-  const result = await prisma.brandDeal.updateMany({
-    where: { id: dealId, userId, deletedAt: null },
-    data: { status },
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.brandDeal.updateMany({
+      where: { id: dealId, userId, deletedAt: null },
+      data: { status },
+    });
+
+    if (result.count === 0) {
+      throw new ApiError(404, "Deal not found");
+    }
+
+    if (status === "CONFIRMED") {
+      const existingPayment = await tx.payment.findFirst({
+        where: { brandDealId: dealId },
+      });
+
+      if (!existingPayment) {
+        const deal = await tx.brandDeal.findUniqueOrThrow({
+          where: { id: dealId },
+        });
+
+        await tx.payment.create({
+          data: {
+            amount: deal.dealValue,
+            dueDate: deal.deadline,
+            brandDealId: deal.id,
+          },
+        });
+      }
+    }
+
+    return tx.brandDeal.findUniqueOrThrow({
+      where: { id: dealId },
+      include: { payment: true },
+    });
   });
 
-  if (result.count === 0) {
-    throw new ApiError(404, "Deal not found");
-  }
-
-  // TODO: future hook — when status === "CONFIRMED", auto-create Payment record
-  // (part of the Payment reminders phase, not built yet)
-
-  const updated = await prisma.brandDeal.findUnique({ where: { id: dealId } });
-  return serializeDeal(updated!);
+  return serializeDeal(updated);
 }
 
-// ---- Soft delete ----
+// Soft delete
 export async function deleteDeal(userId: string, dealId: string) {
   const result = await prisma.brandDeal.updateMany({
     where: { id: dealId, userId, deletedAt: null },
